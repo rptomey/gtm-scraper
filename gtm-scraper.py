@@ -115,8 +115,10 @@ def find_gtm_containers(bs4_obj):
 
 def write_result_to_file(dictionary):
     global valid_hostnames
-    name = valid_hostnames[0].replace('.','_')
-    with open(f'{name}-gtm-scraper-results.csv', 'w', newline='') as csvfile:
+
+    # For lack of a better option at the moment, start the name with the first hostname in the list from the command line
+    name_root = valid_hostnames[0].replace('.','_')
+    with open(f'{name_root}-gtm-scraper-results.csv', 'w', newline='') as csvfile:
         writer = csv.writer(csvfile, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
         writer.writerow(['url', 'container_id', 'in_head', 'in_body'])
 
@@ -130,9 +132,11 @@ def write_result_to_file(dictionary):
             else:
                 writer.writerow([key, 'none', 'na', 'na'])
 
+# Initialize the queue with the homepages for the hostnames from the command line
 for hostname in valid_hostnames:
     queued_urls.append(f'https://{hostname}/')
 
+# Check pages until the queue is empty
 while queued_urls:
     current_url = queued_urls.pop(0)
     current_page = get_page(current_url)
@@ -141,4 +145,5 @@ while queued_urls:
         queued_urls.extend(find_urls_on_page(current_url, current_page))
         page_details[current_url] = find_gtm_containers(current_page)
 
+# Use the dictionary to create a csv file
 write_result_to_file(page_details)
