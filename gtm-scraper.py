@@ -25,10 +25,6 @@ def get_page(url):
 def find_urls_on_page(current_url, bs4_obj):
     # Take a Beautiful Soup object, find everything that looks like a link
     # then return all valid, unchecked, unqueued links
-    global valid_hostnames
-    global queued_urls
-    global checked_urls
-    global errored_urls
 
     anchors = bs4_obj.select('a[href]')
 
@@ -114,8 +110,6 @@ def find_gtm_containers(bs4_obj):
     return containers
 
 def write_result_to_file(dictionary):
-    global valid_hostnames
-
     # For lack of a better option at the moment, start the name with the first hostname in the list from the command line
     name_root = valid_hostnames[0].replace('.','_')
     with open(f'{name_root}-gtm-scraper-results.csv', 'w', newline='') as csvfile:
@@ -139,6 +133,7 @@ for hostname in valid_hostnames:
 # Check pages until the queue is empty
 while queued_urls:
     current_url = queued_urls.pop(0)
+    print(f'checking: {current_url}')
     current_page = get_page(current_url)
     if current_page:
         checked_urls.append(current_url) # make sure it's in one of the lists so that it doesn't get enqueued
