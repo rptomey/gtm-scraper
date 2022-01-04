@@ -1,4 +1,4 @@
-import requests, sys, csv, bs4, re
+import requests, sys, csv, bs4, re, time, random
 from urllib.parse import urlparse
 
 # Get the hostnames to check from the command line arguments
@@ -144,6 +144,9 @@ while queued_urls:
         checked_urls.append(current_url) # make sure it's in one of the lists so that it doesn't get enqueued
         queued_urls.extend(find_urls_on_page(current_url, current_page))
         page_details[current_url] = find_gtm_containers(current_page)
+
+    # Pause for a moment before the next URL to try to avoid triggering bot detection
+    time.sleep(random.randrange(3,7)/10)
 
 # Use the dictionary to create a csv file
 write_result_to_file(page_details)
