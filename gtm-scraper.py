@@ -1,4 +1,4 @@
-import requests, sys, csv, bs4, re, time, random
+import requests, sys, csv, bs4, re, time, random, urllib3, ssl
 from urllib.parse import urlparse
 
 # Get the hostnames to check from the command line arguments
@@ -11,16 +11,20 @@ page_details = {} # dictonary of pages as keys and lists of containers as values
 
 def get_page(url):
     # Get the URL and return it as a Beautiful Soup object
-    res = requests.get(url)
-
+    
     try:
+        res = requests.get(url)
         res.raise_for_status()
-    except requests.exceptions.RequestException:
+    except (requests.exceptions.RequestException, urllib3.exceptions.MaxRetryError, requests.exceptions.SSLError, ssl.SSLCertVerificationError):
         errored_urls.append(url)
         return None
 
-    pageSoup = bs4.BeautifulSoup(res.text, 'html.parser')
-    return pageSoup
+    if "text/html" in res.headers['content-type']:
+        pageSoup = bs4.BeautifulSoup(res.text, 'html.parser')
+        return pageSoup
+    else:
+        errored_urls.append(url)
+        return None
 
 def find_urls_on_page(current_url, bs4_obj):
     # Take a Beautiful Soup object, find everything that looks like a link
@@ -30,12 +34,14 @@ def find_urls_on_page(current_url, bs4_obj):
 
     # Get rid of any links to call or email and any links that just run a script
     real_links = []
-    invalid_link_regex = re.compile(r'^(mailto|tel|javascript):|\.(png|jpe?g|gif|pdf|xlsx?|docx?|pptx?|zip|txt|mpeg)$', re.IGNORECASE)
+    invalid_link_regex = re.compile(r'^(mailto|tel|javascript):', re.IGNORECASE)
+    invalid_path_regex = re.compile(r'\.(png|jpe?g|gif|pdf|xlsx?|docx?|pptx?|zip|txt|mpeg|mp4)$', re.IGNORECASE)
 
     for anchor in anchors:
         href = anchor.get('href')
         if invalid_link_regex.search(href) is None:
-            real_links.append(href)
+            if invalid_path_regex.search(urlparse(href).path) is None:
+                real_links.append(href)
     
     # Narrow the list down to just scheme, hostname, and path - no parameters or fragments
     base_links = []
@@ -56,7 +62,7 @@ def find_urls_on_page(current_url, bs4_obj):
 
     for link in base_links:
         if urlparse(link).hostname in valid_hostnames:
-            if link not in queued_urls and link not in checked_urls and link not in errored_urls:
+            if link not in queued_urls and link not in checked_urls and link not in errored_urls and link not in return_links:
                 return_links.append(link)
     
     return return_links
