@@ -17,9 +17,12 @@ def get_page(url):
         res = requests.get(url)
         res.raise_for_status()
     except (requests.exceptions.RequestException, urllib3.exceptions.MaxRetryError, requests.exceptions.SSLError, ssl.SSLCertVerificationError):
+        # This handles all the errors I've seen so far in testing that come out of the requests portion of the process
+        # Might eventually do something with error reason for providing a clean deliverable for errored urls, too
         errored_urls.append(url)
         return None
 
+    # Sometimes links aren't really HTML pages, so make sure they are before trying to Soupify them
     if "text/html" in res.headers.get('content-type',''):
         pageSoup = bs4.BeautifulSoup(res.text, 'html.parser')
         return pageSoup
@@ -34,9 +37,10 @@ def find_urls_on_page(current_url, bs4_obj):
     anchors = bs4_obj.select('a[href]')
 
     # Get rid of any links to call or email and any links that just run a script
+    # Also, try to avoid any obvious file extensions
     real_links = []
     invalid_link_regex = re.compile(r'^(mailto|tel|javascript):', re.IGNORECASE)
-    invalid_path_regex = re.compile(r'\.(png|jpe?g|gif|pdf|xlsx?|docx?|pptx?|zip|txt|mpeg|mp4)$', re.IGNORECASE)
+    invalid_path_regex = re.compile(r'\.(png|jpe?g|gif|pdf|xlsx?|docx?|pptx?|zip|txt|mpeg|mp4|mp3)$', re.IGNORECASE)
 
     for anchor in anchors:
         href = anchor.get('href')
@@ -84,6 +88,7 @@ def find_gtm_containers(bs4_obj):
 
     container_id_regex = re.compile(r'GTM-[A-Z0-9]+')
 
+    # There's probably a cleaner way to do this section, but it works so...
     head_container_ids = []
     noscript_container_ids = []
     unique_container_ids = []
@@ -125,12 +130,14 @@ def write_result_to_file(dictionary):
 
         for key, value in dictionary.items():
             if len(value) >= 1:
+                # Note that a page could have more than one container
                 for container in value:
                     container_id = container["id"]
                     head_bool = container["in_head"]
                     body_bool = container["in_body"]
                     writer.writerow([key, container_id, head_bool, body_bool])
             else:
+                # Represents pages that don't have GTM on them at all
                 writer.writerow([key, 'none', 'na', 'na'])
 
 # Initialize the queue with the homepages for the hostnames from the command line
