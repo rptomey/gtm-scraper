@@ -1,5 +1,6 @@
-import requests, sys, csv, bs4, re, time, random, urllib3, ssl
+import requests, sys, csv, bs4, re, time, random, urllib3, ssl, logging
 from urllib.parse import urlparse
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Get the hostnames to check from the command line arguments
 valid_hostnames = sys.argv[1:]
@@ -19,7 +20,7 @@ def get_page(url):
         errored_urls.append(url)
         return None
 
-    if "text/html" in res.headers['content-type']:
+    if "text/html" in res.headers.get('content-type',''):
         pageSoup = bs4.BeautifulSoup(res.text, 'html.parser')
         return pageSoup
     else:
@@ -139,7 +140,7 @@ for hostname in valid_hostnames:
 # Check pages until the queue is empty
 while queued_urls:
     current_url = queued_urls.pop(0)
-    print(f'checking: {current_url}')
+    logging.info(f'checking: {current_url}')
     current_page = get_page(current_url)
     if current_page:
         checked_urls.append(current_url) # make sure it's in one of the lists so that it doesn't get enqueued
