@@ -7,10 +7,10 @@ def get_page(url):
     try:
         res = requests.get(url)
         res.raise_for_status()
-    except (requests.exceptions.RequestException, urllib3.exceptions.MaxRetryError, requests.exceptions.SSLError, ssl.SSLCertVerificationError):
+    except (requests.exceptions.RequestException, urllib3.exceptions.MaxRetryError, requests.exceptions.SSLError, ssl.SSLCertVerificationError) as ex:
         # This handles all the errors I've seen so far in testing that come out of the requests portion of the process
-        # Might eventually do something with error reason for providing a clean deliverable for errored urls, too
         errored_urls.append(url)
+        error_details[url] = ex
         return None
 
     # Sometimes links aren't really HTML pages, so make sure they are before trying to Soupify them
@@ -19,6 +19,7 @@ def get_page(url):
         return pageSoup
     else:
         errored_urls.append(url)
+        error_details[url] = 'Unsupported or Missing Content Type'
         return None
 
 def find_urls_on_page(current_url, bs4_obj):
@@ -112,7 +113,7 @@ def find_gtm_containers(bs4_obj):
     
     return containers
 
-def write_result_to_file(dictionary):
+def write_results_to_file(dictionary):
     # For lack of a better option at the moment, start the name with the first hostname in the list from the command line
     name_root = valid_hostnames[0].replace('.','_')
     with open(f'{name_root}-gtm-scraper-results.csv', 'w', newline='') as csvfile:
@@ -131,6 +132,16 @@ def write_result_to_file(dictionary):
                 # Represents pages that don't have GTM on them at all
                 writer.writerow([key, 'none', 'na', 'na'])
 
+def write_errors_to_file(dictionary):
+    # For lack of a better option at the moment, start the name with the first hostname in the list from the command line
+    name_root = valid_hostnames[0].replace('.','_')
+    with open(f'{name_root}-gtm-scraper-errors.csv', 'w', newline='') as csvfile:
+        writer = csv.writer(csvfile, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+        writer.writerow(['url', 'error'])
+
+        for key, value in dictionary.items():
+            writer.writerow([key, value])
+
 if __name__ == '__main__':
     # Set logging level
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -142,6 +153,7 @@ if __name__ == '__main__':
     checked_urls = [] # everything that was reviewed
     errored_urls = [] # everything that failed its request status
     page_details = {} # dictionary of pages as keys and lists of containers as values
+    error_details = {} # dictionary of pages as keys and errors as values
 
     # Initialize the queue with the homepages for the hostnames from the command line
     for hostname in valid_hostnames:
@@ -161,4 +173,8 @@ if __name__ == '__main__':
         time.sleep(random.randrange(3,7)/10)
 
     # Use the dictionary to create a csv file
-    write_result_to_file(page_details)
+    write_results_to_file(page_details)
+
+    # If applicable, produce an error report as well
+    if len(error_details) >= 1:
+        write_errors_to_file(error_details)
