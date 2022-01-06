@@ -1,14 +1,5 @@
 import requests, sys, csv, bs4, re, time, random, urllib3, ssl, logging
 from urllib.parse import urlparse
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-
-# Get the hostnames to check from the command line arguments
-valid_hostnames = sys.argv[1:]
-
-queued_urls = [] # working list of urls to check
-checked_urls = [] # everything that was reviewed
-errored_urls = [] # everything that failed its request status
-page_details = {} # dictonary of pages as keys and lists of containers as values
 
 def get_page(url):
     # Get the URL and return it as a Beautiful Soup object
@@ -50,16 +41,18 @@ def find_urls_on_page(current_url, bs4_obj):
     
     # Narrow the list down to just scheme, hostname, and path - no parameters or fragments
     base_links = []
+    current_scheme = urlparse(current_url).scheme
     current_hostname = urlparse(current_url).hostname
 
     for link in real_links:
-        base_url = 'https://'
+        base_url = ''
         parsed_link = urlparse(link)
         if parsed_link.hostname:
-            base_url = base_url + parsed_link.hostname + parsed_link.path
+            base_url = base_url + parsed_link.scheme + '://' + parsed_link.hostname + parsed_link.path
         else:
-            base_url = base_url + current_hostname + parsed_link.path
-
+            # HREF values for same domain links won't include scheme or hostname, so use the current ones
+            base_url = base_url + current_scheme + '://' + current_hostname + parsed_link.path
+        
         base_links.append(base_url)
 
     # Only return the valid links that haven't been already queued, checked, or resulted in an error
@@ -88,10 +81,9 @@ def find_gtm_containers(bs4_obj):
 
     container_id_regex = re.compile(r'GTM-[A-Z0-9]+')
 
-    # There's probably a cleaner way to do this section, but it works so...
+    # Extract the container IDs from all found scripts
     head_container_ids = []
     noscript_container_ids = []
-    unique_container_ids = []
 
     for script in gtm_scripts:
         match = container_id_regex.search(str(script))
@@ -99,8 +91,6 @@ def find_gtm_containers(bs4_obj):
             match_result = match.group(0)
             if match_result not in head_container_ids:
                 head_container_ids.append(match_result)
-            if match_result not in unique_container_ids:
-                unique_container_ids.append(match_result)
     
     for noscript in gtm_noscripts:
         match = container_id_regex.search(str(noscript))
@@ -108,10 +98,11 @@ def find_gtm_containers(bs4_obj):
             match_result = match.group(0)
             if match_result not in noscript_container_ids:
                 noscript_container_ids.append(match_result)
-            if match_result not in unique_container_ids:
-                unique_container_ids.append(match_result)
 
-    for container_id in unique_container_ids:
+    # Get comprehensive list of unique IDs
+    all_container_ids = list(set(head_container_ids + noscript_container_ids))
+
+    for container_id in all_container_ids:
         container = {
             "id": container_id,
             "in_head": container_id in head_container_ids,
@@ -140,22 +131,34 @@ def write_result_to_file(dictionary):
                 # Represents pages that don't have GTM on them at all
                 writer.writerow([key, 'none', 'na', 'na'])
 
-# Initialize the queue with the homepages for the hostnames from the command line
-for hostname in valid_hostnames:
-    queued_urls.append(f'https://{hostname}/')
+if __name__ == '__main__':
+    # Set logging level
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+    
+    # Get the hostnames to check from the command line arguments
+    valid_hostnames = sys.argv[1:]
 
-# Check pages until the queue is empty
-while queued_urls:
-    current_url = queued_urls.pop(0)
-    logging.info(f'checking: {current_url}')
-    current_page = get_page(current_url)
-    if current_page:
-        checked_urls.append(current_url) # make sure it's in one of the lists so that it doesn't get enqueued
-        queued_urls.extend(find_urls_on_page(current_url, current_page))
-        page_details[current_url] = find_gtm_containers(current_page)
+    queued_urls = [] # working list of urls to check
+    checked_urls = [] # everything that was reviewed
+    errored_urls = [] # everything that failed its request status
+    page_details = {} # dictionary of pages as keys and lists of containers as values
 
-    # Pause for a moment before the next URL to try to avoid triggering bot detection
-    time.sleep(random.randrange(3,7)/10)
+    # Initialize the queue with the homepages for the hostnames from the command line
+    for hostname in valid_hostnames:
+        queued_urls.append(f'https://{hostname}/')
 
-# Use the dictionary to create a csv file
-write_result_to_file(page_details)
+    # Check pages until the queue is empty
+    while queued_urls:
+        current_url = queued_urls.pop(0)
+        logging.info(f'checking: {current_url}')
+        current_page = get_page(current_url)
+        if current_page:
+            checked_urls.append(current_url) # make sure it's in one of the lists so that it doesn't get enqueued
+            queued_urls.extend(find_urls_on_page(current_url, current_page))
+            page_details[current_url] = find_gtm_containers(current_page)
+
+        # Pause for a moment before the next URL to try to avoid triggering bot detection
+        time.sleep(random.randrange(3,7)/10)
+
+    # Use the dictionary to create a csv file
+    write_result_to_file(page_details)
